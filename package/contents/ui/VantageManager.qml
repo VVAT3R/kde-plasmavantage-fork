@@ -9,7 +9,7 @@ import org.kde.plasma.plasma5support as Plasma5Support
 
 Item {
     readonly property string ideapadModPath: "/sys/bus/platform/drivers/ideapad_acpi/VPC2004:00/"
-    readonly property string legionModPath: "/sys/bus/platform/drivers/legion/PNP0C09:00/"
+    readonly property string legionModPath: "/sys/bus/platform/drivers/legion/legion/"
     readonly property string ylogoLedPath: "/sys/class/leds/platform::ylogo/brightness/"
     readonly property string ioportLedPath: "/sys/class/leds/platform::ioport/brightness/"
 
@@ -110,7 +110,7 @@ Item {
         if (module == "legion") sysfsPath = legionModPath
         else if (module == "ideapad") sysfsPath = ideapadModPath
         else return
-        executable.exec("echo " + value + " | sudo /usr/bin/tee " + sysfsPath + param)
+        executable.exec("pkexec sh -c 'echo " + value + " | tee " + sysfsPath + param + "'")
     }
 
     // TODO: Give each control its own Datasource object
@@ -137,21 +137,19 @@ Item {
             if (index >= vantageModel.count) return
 
             let control = vantageModel.get(index)
-            if (cmd.startsWith("cat") && !stderr) {
-                let newValue = parseInt(stdout)
-                if (newValue == 0 || newValue == 1 && control.value != newValue) {
-                    alog("Element update: " + control.param + " from " + control.value + " to " + newValue)
-                    control.value = newValue
+
+            if (cmd.startsWith("cat")) {
+                if (!stderr) {
+                    let newValue = parseInt(stdout)
+                    if ((newValue == 0 || newValue == 1) && control.value != newValue) {
+                        alog("Element update: " + control.param + " from " + control.value + " to " + newValue)
+                        control.value = newValue
+                    }
                 }
                 control.busy = false
             }
-            else if (cmd.includes("echo")) {
-                if (stderr.includes("Permission")) {
-                    alog("Permission denied, retrying as root...")
-                    exec(cmd, true)
-                    return
-                }
-                else if (!stderr) {
+            else if (cmd.includes("echo") || cmd.includes("pkexec")) {
+                if (!stderr) {
                     readParam(control.module, control.param)
                     ready(control.param, true)
                 }
@@ -159,6 +157,9 @@ Item {
                     control.busy = false
                     ready(control.param, false)
                 }
+            }
+            else {
+                control.busy = false
             }
         }
 
